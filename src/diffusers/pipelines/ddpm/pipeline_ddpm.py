@@ -109,19 +109,22 @@ class DDPMPipeline(DiffusionPipeline):
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
+        mov = []
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
             model_output = self.unet(image, t).sample
 
             # 2. compute previous image: x_t -> x_t-1
             image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
+            mov.append((image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+            mov = list(map(self.numpy_to_pil, mov))
 
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(images=image)
+        return ImagePipelineOutput(images=image, movie=mov)

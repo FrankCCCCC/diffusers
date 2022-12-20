@@ -102,7 +102,7 @@ class ImagePipelineOutput(BaseOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
-
+    movie: Union[List[List[PIL.Image.Image]], np.ndarray] = None
 
 @dataclass
 class AudioPipelineOutput(BaseOutput):

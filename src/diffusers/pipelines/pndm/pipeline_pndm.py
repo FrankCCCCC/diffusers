@@ -47,6 +47,8 @@ class PNDMPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
+        init: torch.Tensor = None, 
+        save_every_step: bool = False,
         return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
@@ -72,25 +74,33 @@ class PNDMPipeline(DiffusionPipeline):
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
 
-        # Sample gaussian noise to begin loop
-        image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-            generator=generator,
-        )
-        image = image.to(self.device)
+        if init == None:
+            # Sample gaussian noise to begin loop
+            image = torch.randn(
+                (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+                generator=generator,
+            )
+            image = image.to(self.device)
+        else:
+            image = init.detach().clone().to(self.device)
 
+        mov = []
         self.scheduler.set_timesteps(num_inference_steps)
         for t in self.progress_bar(self.scheduler.timesteps):
             model_output = self.unet(image, t).sample
 
             image = self.scheduler.step(model_output, t, image).prev_sample
+            if save_every_step:
+                mov.append((image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+            if save_every_step:
+                mov = list(map(self.numpy_to_pil, mov))
 
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(images=image)
+        return ImagePipelineOutput(images=image, movie=mov)

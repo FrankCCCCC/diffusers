@@ -45,6 +45,8 @@ class DDIMPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         use_clipped_model_output: Optional[bool] = None,
         output_type: Optional[str] = "pil",
+        init: torch.Tensor = None, 
+        save_every_step: bool = False,
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
@@ -105,20 +107,24 @@ class DDIMPipeline(DiffusionPipeline):
             )
 
         rand_device = "cpu" if self.device.type == "mps" else self.device
-        if isinstance(generator, list):
-            shape = (1,) + image_shape[1:]
-            image = [
-                torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
-                for i in range(batch_size)
-            ]
-            image = torch.cat(image, dim=0).to(self.device)
+        if init == None:
+            if isinstance(generator, list):
+                shape = (1,) + image_shape[1:]
+                image = [
+                    torch.randn(shape, generator=generator[i], device=rand_device, dtype=self.unet.dtype)
+                    for i in range(batch_size)
+                ]
+                image = torch.cat(image, dim=0).to(self.device)
+            else:
+                image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
+                image = image.to(self.device)
         else:
-            image = torch.randn(image_shape, generator=generator, device=rand_device, dtype=self.unet.dtype)
-            image = image.to(self.device)
+            image = init.detach().clone().to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
+        mov = []
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
             model_output = self.unet(image, t).sample
@@ -129,13 +135,17 @@ class DDIMPipeline(DiffusionPipeline):
             image = self.scheduler.step(
                 model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator
             ).prev_sample
+            if save_every_step:
+                mov.append((image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+            if save_every_step:
+                mov = list(map(self.numpy_to_pil, mov))
 
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(images=image)
+        return ImagePipelineOutput(images=image, movie=mov)

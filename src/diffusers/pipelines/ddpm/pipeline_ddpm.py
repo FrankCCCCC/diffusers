@@ -45,6 +45,8 @@ class DDPMPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
+        init: torch.Tensor = None, 
+        save_every_step: bool = False,
         return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
@@ -99,12 +101,15 @@ class DDPMPipeline(DiffusionPipeline):
         else:
             image_shape = (batch_size, self.unet.in_channels, *self.unet.sample_size)
 
-        if self.device.type == "mps":
-            # randn does not work reproducibly on mps
-            image = torch.randn(image_shape, generator=generator)
-            image = image.to(self.device)
+        if init == None:
+            if self.device.type == "mps":
+                # randn does not work reproducibly on mps
+                image = torch.randn(image_shape, generator=generator)
+                image = image.to(self.device)
+            else:
+                image = torch.randn(image_shape, generator=generator, device=self.device)
         else:
-            image = torch.randn(image_shape, generator=generator, device=self.device)
+            image = init.detach().clone().to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
@@ -116,13 +121,15 @@ class DDPMPipeline(DiffusionPipeline):
 
             # 2. compute previous image: x_t -> x_t-1
             image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
-            mov.append((image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
+            if save_every_step:
+                mov.append((image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-            mov = list(map(self.numpy_to_pil, mov))
+            if save_every_step:
+                mov = list(map(self.numpy_to_pil, mov))
 
         if not return_dict:
             return (image,)

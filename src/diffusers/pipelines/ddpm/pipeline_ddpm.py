@@ -44,6 +44,7 @@ class DDPMPipeline(DiffusionPipeline):
         batch_size: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         num_inference_steps: int = 1000,
+        start_from: int = 0,
         output_type: Optional[str] = "pil",
         init: torch.Tensor = None, 
         save_every_step: bool = False,
@@ -115,7 +116,9 @@ class DDPMPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         mov = []
-        for t in self.progress_bar(self.scheduler.timesteps):
+        if save_every_step:
+            mov = [(image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
+        for t in self.progress_bar(self.scheduler.timesteps[start_from:]):
             # 1. predict noise model_output
             model_output = self.unet(image, t).sample
 

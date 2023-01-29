@@ -85,6 +85,8 @@ class PNDMPipeline(DiffusionPipeline):
             image = init.detach().clone().to(self.device)
 
         mov = []
+        if save_every_step:
+            mov = [(image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
         self.scheduler.set_timesteps(num_inference_steps)
         for t in self.progress_bar(self.scheduler.timesteps):
             model_output = self.unet(image, t).sample

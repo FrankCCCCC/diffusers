@@ -125,6 +125,8 @@ class DDIMPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         mov = []
+        if save_every_step:
+            mov = [(image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
             model_output = self.unet(image, t).sample

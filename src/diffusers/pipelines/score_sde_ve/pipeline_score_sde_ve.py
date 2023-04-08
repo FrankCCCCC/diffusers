@@ -44,6 +44,8 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         num_inference_steps: int = 2000,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
+        init: torch.Tensor = None, 
+        save_every_step: bool = False,
         return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
@@ -70,12 +72,18 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         model = self.unet
 
-        sample = randn_tensor(shape, generator=generator) * self.scheduler.init_noise_sigma
-        sample = sample.to(self.device)
+        if init == None:
+            sample = randn_tensor(shape, generator=generator) * self.scheduler.init_noise_sigma
+            sample = sample.to(self.device)
+        else:
+            sample = init.detach().clone().to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
         self.scheduler.set_sigmas(num_inference_steps)
 
+        mov = []
+        if save_every_step:
+            mov = [(sample / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=self.device)
 
@@ -89,13 +97,17 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             output = self.scheduler.step_pred(model_output, t, sample, generator=generator)
 
             sample, sample_mean = output.prev_sample, output.prev_sample_mean
+            if save_every_step:
+                mov.append(sample_mean.clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
 
         sample = sample_mean.clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
+            if save_every_step:
+                mov = list(map(self.numpy_to_pil, mov))
 
         if not return_dict:
             return (sample,)
 
-        return ImagePipelineOutput(images=sample)
+        return ImagePipelineOutput(images=sample, movie=mov)

@@ -76,14 +76,14 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             sample = randn_tensor(shape, generator=generator) * self.scheduler.init_noise_sigma
             sample = sample.to(self.device)
         else:
-            sample = init.detach().clone().to(self.device)
+            sample = init.detach().clone().to(self.device) * self.scheduler.init_noise_sigma
 
         self.scheduler.set_timesteps(num_inference_steps)
         self.scheduler.set_sigmas(num_inference_steps)
 
         mov = []
         if save_every_step:
-            mov = [(sample / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
+            mov = [sample.clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=self.device)
 

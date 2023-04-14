@@ -83,7 +83,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.timesteps = None
-
+        self.num_train_timesteps = num_train_timesteps
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:

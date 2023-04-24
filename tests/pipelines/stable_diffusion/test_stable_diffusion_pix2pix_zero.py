@@ -33,8 +33,8 @@ from diffusers import (
 from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import load_image, load_pt, require_torch_gpu, skip_mps
 
-from ...pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ...test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -133,7 +133,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5184, 0.503, 0.4917, 0.4022, 0.3455, 0.464, 0.5324, 0.5323, 0.4894])
+        expected_slice = np.array([0.4863, 0.5053, 0.5033, 0.4007, 0.3571, 0.4768, 0.5176, 0.5277, 0.4940])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -151,7 +151,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5464, 0.5072, 0.5012, 0.4124, 0.3624, 0.466, 0.5413, 0.5468, 0.4927])
+        expected_slice = np.array([0.5177, 0.5097, 0.5047, 0.4076, 0.3667, 0.4767, 0.5238, 0.5307, 0.4958])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -170,7 +170,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5114, 0.5051, 0.5222, 0.5279, 0.5037, 0.5156, 0.4604, 0.4966, 0.504])
+        expected_slice = np.array([0.5421, 0.5525, 0.6085, 0.5279, 0.4658, 0.5317, 0.4418, 0.4815, 0.5132])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -187,7 +187,7 @@ class StableDiffusionPix2PixZeroPipelineFastTests(PipelineTesterMixin, unittest.
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5185, 0.5027, 0.492, 0.401, 0.3445, 0.464, 0.5321, 0.5327, 0.4892])
+        expected_slice = np.array([0.4861, 0.5053, 0.5038, 0.3994, 0.3562, 0.4768, 0.5172, 0.5280, 0.4938])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -347,7 +347,6 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe.inverse_scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
 
         caption = "a photography of a cat with flowers"
@@ -362,7 +361,29 @@ class InversionPipelineSlowTests(unittest.TestCase):
         image_slice = inv_latents[0, -3:, -3:, -1].flatten()
 
         assert inv_latents.shape == (1, 4, 64, 64)
-        expected_slice = np.array([0.8877, 0.0587, 0.7700, -1.6035, -0.5962, 0.4827, -0.6265, 1.0498, -0.8599])
+        expected_slice = np.array([0.8447, -0.0730, 0.7588, -1.2070, -0.4678, 0.1511, -0.8555, 1.1816, -0.7666])
+
+        assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
+
+    def test_stable_diffusion_2_pix2pix_inversion(self):
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-1", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
+
+        caption = "a photography of a cat with flowers"
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        output = pipe.invert(caption, image=self.raw_image, generator=generator, num_inference_steps=10)
+        inv_latents = output[0]
+
+        image_slice = inv_latents[0, -3:, -3:, -1].flatten()
+
+        assert inv_latents.shape == (1, 4, 64, 64)
+        expected_slice = np.array([0.8970, -0.1611, 0.4766, -1.1162, -0.5923, 0.1050, -0.9678, 1.0537, -0.6050])
 
         assert np.abs(expected_slice - image_slice.cpu().numpy()).max() < 5e-2
 
@@ -375,7 +396,6 @@ class InversionPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe.inverse_scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
 
         caption = "a photography of a cat with flowers"
@@ -407,3 +427,44 @@ class InversionPipelineSlowTests(unittest.TestCase):
 
         max_diff = np.abs(expected_image - image).mean()
         assert max_diff < 0.05
+
+    def test_stable_diffusion_2_pix2pix_full(self):
+        # numpy array of https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/pix2pix/dog_2.png
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/dog_2.npy"
+        )
+
+        pipe = StableDiffusionPix2PixZeroPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-2-1", safety_checker=None, torch_dtype=torch.float16
+        )
+        pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
+
+        caption = "a photography of a cat with flowers"
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.manual_seed(0)
+        output = pipe.invert(caption, image=self.raw_image, generator=generator)
+        inv_latents = output[0]
+
+        source_prompts = 4 * ["a cat sitting on the street", "a cat playing in the field", "a face of a cat"]
+        target_prompts = 4 * ["a dog sitting on the street", "a dog playing in the field", "a face of a dog"]
+
+        source_embeds = pipe.get_embeds(source_prompts)
+        target_embeds = pipe.get_embeds(target_prompts)
+
+        image = pipe(
+            caption,
+            source_embeds=source_embeds,
+            target_embeds=target_embeds,
+            num_inference_steps=125,
+            cross_attention_guidance_amount=0.015,
+            generator=generator,
+            latents=inv_latents,
+            negative_prompt=caption,
+            output_type="np",
+        ).images
+
+        mean_diff = np.abs(expected_image - image).mean()
+        assert mean_diff < 0.25

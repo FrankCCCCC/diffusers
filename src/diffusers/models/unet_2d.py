@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
@@ -44,7 +44,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
     Parameters:
         sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
-            Height and width of input/output sample.
+            Height and width of input/output sample. Dimensions must be a multiple of `2 ** (len(block_out_channels) -
+            1)`.
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
@@ -70,8 +71,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for resnet blocks, see [`~models.resnet.ResnetBlock2D`]. Choose from `default` or `scale_shift`.
-        class_embed_type (`str`, *optional*, defaults to None): The type of class embedding to use which is ultimately
-            summed with the time embeddings. Choose from `None`, `"timestep"`, or `"identity"`.
+        class_embed_type (`str`, *optional*, defaults to None):
+            The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
+            `"timestep"`, or `"identity"`.
         num_class_embeds (`int`, *optional*, defaults to None):
             Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
             class conditioning with `class_embed_type` equal to `None`.
@@ -213,6 +215,16 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=norm_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
+
+    @property
+    def in_channels(self):
+        deprecate(
+            "in_channels",
+            "1.0.0",
+            "Accessing `in_channels` directly via unet.in_channels is deprecated. Please use `unet.config.in_channels` instead",
+            standard_warn=False,
+        )
+        return self.config.in_channels
 
     def forward(
         self,

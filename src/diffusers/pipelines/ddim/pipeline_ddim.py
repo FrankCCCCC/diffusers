@@ -40,6 +40,12 @@ class DDIMPipeline(DiffusionPipeline):
         scheduler = DDIMScheduler.from_config(scheduler.config)
 
         self.register_modules(unet=unet, scheduler=scheduler)
+        
+    def encode(self, image: torch.Tensor, *args, **kwargs):
+        return image
+    
+    def decode(self, image: torch.Tensor, *args, **kwargs):
+        return image
 
     @torch.no_grad()
     def __call__(

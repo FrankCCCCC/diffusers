@@ -36,9 +36,35 @@ class LDMPipeline(DiffusionPipeline):
             [`DDIMScheduler`] is to be used in combination with `unet` to denoise the encoded image latents.
     """
 
-    def __init__(self, vqvae: VQModel, unet: UNet2DModel, scheduler: DDIMScheduler):
+    def __init__(self, vqvae: VQModel, unet: UNet2DModel, scheduler: DDIMScheduler, clip_sample: bool=False):
         super().__init__()
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
+        self.clip_sample = clip_sample
+    
+    @staticmethod
+    def __encode_latents(vae: VQModel, x: torch.Tensor, weight_dtype: str=None, scaling_factor: float=None):
+        x = x.to(vae.device)
+        if weight_dtype != None and weight_dtype != "":
+            x = x.to(dtype=weight_dtype)
+        if scaling_factor != None:
+            return vae.encode(x).latents * scaling_factor
+        # return vae.encode(x).latents * vae.config.scaling_factor
+        return vae.encode(x).latents
+    @staticmethod
+    def __decode_latents(vae: VQModel, x: torch.Tensor, weight_dtype: str=None, scaling_factor: float=None):
+        x = x.to(vae.device)
+        if weight_dtype != None and weight_dtype != "":
+            x = x.to(dtype=weight_dtype)
+        if scaling_factor != None:
+            return vae.decode(x).sample / scaling_factor
+        # return vae.decode(x).sample / vae.config.scaling_factor
+        return vae.decode(x).sample
+        
+    def encode(self, image: torch.Tensor, weight_dtype: str=None, scaling_factor: float=None, *args, **kwargs):
+        return LDMPipeline.__encode_latents(vae=self.vqvae, x=image, weight_dtype=weight_dtype, scaling_factor=scaling_factor)
+    
+    def decode(self, image: torch.Tensor, weight_dtype: str=None, scaling_factor: float=None, *args, **kwargs):
+        return LDMPipeline.__decode_latents(vae=self.vqvae, x=image, weight_dtype=weight_dtype, scaling_factor=scaling_factor)
 
     @torch.no_grad()
     def __call__(
@@ -48,6 +74,8 @@ class LDMPipeline(DiffusionPipeline):
         eta: float = 0.0,
         num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
+        init: torch.Tensor = None, 
+        save_every_step: bool = False,
         return_dict: bool = True,
         **kwargs,
     ) -> Union[Tuple, ImagePipelineOutput]:
@@ -71,12 +99,15 @@ class LDMPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if `return_dict` is
             True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
-
-        latents = randn_tensor(
-            (batch_size, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
-            generator=generator,
-        )
-        latents = latents.to(self.device)
+        
+        if init == None:
+            latents = randn_tensor(
+                (batch_size, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
+                generator=generator,
+            )
+            latents = latents.to(self.device)
+        else:
+            latents = init.detach().clone().to(self.device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -90,12 +121,20 @@ class LDMPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
+        mov = []
+        if save_every_step:
+            mov = [(self.vqvae.decode(latents).sample / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
         for t in self.progress_bar(self.scheduler.timesteps):
             latent_model_input = self.scheduler.scale_model_input(latents, t)
             # predict the noise residual
             noise_prediction = self.unet(latent_model_input, t).sample
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
+            if self.clip_sample:
+                latents = latents.clamp(-1, 1)
+            if save_every_step:
+                pass
+                # mov.append((self.vqvae.decode(latents).sample / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
 
         # decode the image latents with the VAE
         image = self.vqvae.decode(latents).sample
@@ -104,8 +143,10 @@ class LDMPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+            if save_every_step:
+                mov = list(map(self.numpy_to_pil, mov))
 
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(images=image)
+        return ImagePipelineOutput(images=image, movie=mov)

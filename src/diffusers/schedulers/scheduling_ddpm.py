@@ -134,6 +134,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         clip_sample_range: float = 1.0,
         sample_max_value: float = 1.0,
+        clip_defense: bool = False,
+        clip_defense_range: float = 1.0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -409,6 +411,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
         pred_prev_sample = pred_prev_sample + variance
+        if self.config.clip_defense:
+            pred_prev_sample = pred_prev_sample.clamp(-self.config.clip_defense_range, self.config.clip_defense_range)
 
         if not return_dict:
             return (pred_prev_sample,)

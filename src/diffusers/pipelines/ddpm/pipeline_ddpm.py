@@ -54,6 +54,7 @@ class DDPMPipeline(DiffusionPipeline):
         init: torch.Tensor = None, 
         save_every_step: bool = False,
         return_dict: bool = True,
+        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:

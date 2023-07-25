@@ -82,6 +82,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
+        num_train_timesteps: int = 2000,
         sigma_min: float = 0.02,
         sigma_max: float = 100,
         s_noise: float = 1.007,
@@ -96,6 +97,17 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps: int = None
         self.timesteps: np.IntTensor = None
         self.schedule: torch.FloatTensor = None  # sigma(t_i)
+        
+        timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        timesteps = torch.from_numpy(timesteps)
+        sigmas = [
+            (
+                self.config.sigma_max**2
+                * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_train_timesteps - 1))
+            )
+            for i in timesteps
+        ]
+        self.sigmas = torch.tensor(sigmas, dtype=torch.float32)
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """

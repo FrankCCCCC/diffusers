@@ -37,13 +37,14 @@ class PNDMPipeline(DiffusionPipeline):
     unet: UNet2DModel
     scheduler: PNDMScheduler
 
-    def __init__(self, unet: UNet2DModel, scheduler: PNDMScheduler, clip_sample: bool=False):
+    def __init__(self, unet: UNet2DModel, scheduler: PNDMScheduler, clip_sample: bool=False, clip_range: float=1.0):
         super().__init__()
 
         scheduler = PNDMScheduler.from_config(scheduler.config)
 
         self.register_modules(unet=unet, scheduler=scheduler)
         self.clip_sample = clip_sample
+        self.clip_range = clip_range
     
     def encode(self, image: torch.Tensor, *args, **kwargs):
         return image
@@ -56,6 +57,7 @@ class PNDMPipeline(DiffusionPipeline):
         self,
         batch_size: int = 1,
         num_inference_steps: int = 50,
+        start_from: int = 0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         init: torch.Tensor = None, 
@@ -98,12 +100,12 @@ class PNDMPipeline(DiffusionPipeline):
         if save_every_step:
             mov = [(image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
         self.scheduler.set_timesteps(num_inference_steps)
-        for t in self.progress_bar(self.scheduler.timesteps):
+        for t in self.progress_bar(self.scheduler.timesteps[start_from:]):
             model_output = self.unet(image, t).sample
 
             image = self.scheduler.step(model_output, t, image).prev_sample
             if self.clip_sample:
-                image = image.clamp(-1, 1)
+                image = image.clamp(-self.clip_range, self.clip_range)
             if save_every_step:
                 mov.append((image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy())
 

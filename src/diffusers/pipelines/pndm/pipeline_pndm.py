@@ -100,7 +100,7 @@ class PNDMPipeline(DiffusionPipeline):
         if save_every_step:
             mov = [(image / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()]
         self.scheduler.set_timesteps(num_inference_steps)
-        for t in self.progress_bar(self.scheduler.timesteps[start_from:]):
+        for t in self.progress_bar(self.scheduler.timesteps[int(start_from):]):
             model_output = self.unet(image, t).sample
 
             image = self.scheduler.step(model_output, t, image).prev_sample

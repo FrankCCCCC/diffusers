@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ def cosine_distance(image_embeds, text_embeds):
 
 class StableDiffusionSafetyChecker(PreTrainedModel):
     config_class = CLIPConfig
+    main_input_name = "clip_input"
 
     _no_split_modules = ["CLIPEncoderLayer"]
 
@@ -85,7 +86,10 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
             if has_nsfw_concept:
-                images[idx] = np.zeros(images[idx].shape)  # black image
+                if torch.is_tensor(images) or torch.is_tensor(images[0]):
+                    images[idx] = torch.zeros_like(images[idx])  # black image
+                else:
+                    images[idx] = np.zeros(images[idx].shape)  # black image
 
         if any(has_nsfw_concepts):
             logger.warning(
@@ -96,7 +100,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         return images, has_nsfw_concepts
 
     @torch.no_grad()
-    def forward_onnx(self, clip_input: torch.FloatTensor, images: torch.FloatTensor):
+    def forward_onnx(self, clip_input: torch.Tensor, images: torch.Tensor):
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 

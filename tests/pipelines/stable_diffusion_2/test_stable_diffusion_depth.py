@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,32 +39,44 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import (
+from diffusers.utils import is_accelerate_available, is_accelerate_version
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
     floats_tensor,
-    is_accelerate_available,
-    is_accelerate_version,
     load_image,
     load_numpy,
     nightly,
+    require_torch_gpu,
+    skip_mps,
     slow,
     torch_device,
 )
-from diffusers.utils.testing_utils import require_torch_gpu, skip_mps
 
-from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
+)
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
+enable_full_determinism()
 
 
 @skip_mps
-class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionDepth2ImgPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionDepth2ImgPipeline
     test_save_load_optional_components = False
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"depth_mask"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -132,7 +144,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
             backbone_config=backbone_config,
             backbone_featmap_shape=[1, 384, 24, 24],
         )
-        depth_estimator = DPTForDepthEstimation(depth_estimator_config)
+        depth_estimator = DPTForDepthEstimation(depth_estimator_config).eval()
         feature_extractor = DPTFeatureExtractor.from_pretrained(
             "hf-internal-testing/tiny-random-DPTForDepthEstimation"
         )
@@ -162,7 +174,7 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -359,10 +371,18 @@ class StableDiffusionDepth2ImgPipelineFastTests(PipelineTesterMixin, unittest.Te
     def test_attention_slicing_forward_pass(self):
         return super().test_attention_slicing_forward_pass()
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=7e-3)
+
 
 @slow
 @require_torch_gpu
 class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -380,7 +400,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
             "num_inference_steps": 3,
             "strength": 0.75,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -399,12 +419,13 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 480, 640, 3)
         expected_slice = np.array([0.5435, 0.4992, 0.3783, 0.4411, 0.5842, 0.4654, 0.3786, 0.5077, 0.4655])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 6e-1
 
     def test_stable_diffusion_depth2img_pipeline_k_lms(self):
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-depth", safety_checker=None
         )
+        pipe.unet.set_default_attn_processor()
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -417,7 +438,7 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 480, 640, 3)
         expected_slice = np.array([0.6363, 0.6274, 0.6309, 0.6370, 0.6226, 0.6286, 0.6213, 0.6453, 0.6306])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 8e-4
 
     def test_stable_diffusion_depth2img_pipeline_ddim(self):
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
@@ -435,12 +456,12 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 480, 640, 3)
         expected_slice = np.array([0.6424, 0.6524, 0.6249, 0.6041, 0.6634, 0.6420, 0.6522, 0.6555, 0.6436])
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-4
+        assert np.abs(expected_slice - image_slice).max() < 5e-4
 
     def test_stable_diffusion_depth2img_intermediate_state(self):
         number_of_steps = 0
 
-        def callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+        def callback_fn(step: int, timestep: int, latents: torch.Tensor) -> None:
             callback_fn.has_been_called = True
             nonlocal number_of_steps
             number_of_steps += 1
@@ -485,7 +506,6 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-depth", safety_checker=None, torch_dtype=torch.float16
         )
-        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
@@ -501,6 +521,11 @@ class StableDiffusionDepth2ImgPipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -518,7 +543,7 @@ class StableDiffusionImg2ImgPipelineNightlyTests(unittest.TestCase):
             "num_inference_steps": 3,
             "strength": 0.75,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

@@ -18,10 +18,11 @@ from typing import List, Optional, Tuple, Union
 import torch
 
 from ...utils.torch_utils import randn_tensor
+from ...loaders import LoraLoaderMixin
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
-class DDPMPipeline(DiffusionPipeline):
+class DDPMPipeline(DiffusionPipeline, LoraLoaderMixin):
     r"""
     Pipeline for image generation.
 

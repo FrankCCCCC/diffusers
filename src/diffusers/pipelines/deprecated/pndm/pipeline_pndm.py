@@ -20,10 +20,10 @@ import torch
 from ....models import UNet2DModel
 from ....schedulers import PNDMScheduler
 from ....utils.torch_utils import randn_tensor
+from ....loaders import LoraLoaderMixin
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
-
-class PNDMPipeline(DiffusionPipeline):
+class PNDMPipeline(DiffusionPipeline, LoraLoaderMixin):
     r"""
     Pipeline for unconditional image generation.
 

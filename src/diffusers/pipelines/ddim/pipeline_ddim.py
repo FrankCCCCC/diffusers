@@ -18,10 +18,11 @@ import torch
 
 from ...schedulers import DDIMScheduler
 from ...utils.torch_utils import randn_tensor
+from ...loaders import LoraLoaderMixin
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
-class DDIMPipeline(DiffusionPipeline):
+class DDIMPipeline(DiffusionPipeline, LoraLoaderMixin):
     r"""
     Pipeline for image generation.
 

@@ -19,10 +19,10 @@ import torch
 from ....models import UNet2DModel
 from ....schedulers import ScoreSdeVeScheduler
 from ....utils.torch_utils import randn_tensor
+from ....loaders import LoraLoaderMixin
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
-
-class ScoreSdeVePipeline(DiffusionPipeline):
+class ScoreSdeVePipeline(DiffusionPipeline, LoraLoaderMixin):
     r"""
     Pipeline for unconditional image generation.
 

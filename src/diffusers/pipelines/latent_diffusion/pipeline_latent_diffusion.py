@@ -26,10 +26,11 @@ from transformers.utils import logging
 from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils.torch_utils import randn_tensor
+from ...loaders import LoraLoaderMixin
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
-class LDMTextToImagePipeline(DiffusionPipeline):
+class LDMTextToImagePipeline(DiffusionPipeline, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using latent diffusion.
 

@@ -124,16 +124,17 @@ class LoraLoaderMixin:
             adapter_name=adapter_name,
             _pipeline=self,
         )
-        self.load_lora_into_text_encoder(
-            state_dict,
-            network_alphas=network_alphas,
-            text_encoder=getattr(self, self.text_encoder_name)
-            if not hasattr(self, "text_encoder")
-            else self.text_encoder,
-            lora_scale=self.lora_scale,
-            adapter_name=adapter_name,
-            _pipeline=self,
-        )
+        if hasattr(self, self.text_encoder_name) or hasattr(self, 'text_encoder'):
+            self.load_lora_into_text_encoder(
+                state_dict,
+                network_alphas=network_alphas,
+                text_encoder=getattr(self, self.text_encoder_name)
+                if not hasattr(self, "text_encoder")
+                else self.text_encoder,
+                lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
+                _pipeline=self,
+            )
 
     @classmethod
     @validate_hf_hub_args

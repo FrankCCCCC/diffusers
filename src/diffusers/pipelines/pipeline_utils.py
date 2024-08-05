@@ -112,6 +112,24 @@ class ImagePipelineOutput(BaseOutput):
     movie: Union[List[PIL.Image.Image], np.ndarray]
 
 @dataclass
+class ImagePipelineOutputExt(BaseOutput):
+    """
+    Output class for image pipelines.
+
+    Args:
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
+        raws (`np.ndarray`)
+            The raw NumPy array output of shape `(batch_size, height, width,
+            num_channels)` without scaling.
+    """
+
+    images: Union[List[PIL.Image.Image], np.ndarray]
+    latents: np.ndarray
+    pred_orig_samples: Union[List[np.ndarray], np.ndarray]
+
+@dataclass
 class AudioPipelineOutput(BaseOutput):
     """
     Output class for audio pipelines.
